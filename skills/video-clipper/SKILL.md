@@ -66,6 +66,21 @@ user sebelum mengunduh.** Simpan ke `projects/<slug>/broll/` dengan nama `<topik
   volume klip untuk mengejar loudness karena puncak suaranya akan clipping. SFX: pop di awal, whoosh_soft di setiap jump cut,
   whoosh_fast di setiap B-roll, boom di punchline terakhir, dengan volume 0.10–0.18 (sekitar -18 s.d. -20 dB).
 
+## 6b. Gaya sinematik (`"style": "cinematic"`, di level spec atau per klip)
+Dipakai untuk klip reflektif/emosional (analogi, definisi ulang, kisah hidup). Klip "list tips" yang cepat
+tetap memakai gaya `hormozi`. Semua elemen di bawah juga tampil di preview.
+- **Grade halus dirender ke footage** (`out/<klip>.graded.mp4`, 24 fps): wajah sedikit terangkat, S-curve
+  lembut, highlight hangat/shadow dingin, saturasi -7%, vignette tipis, dan grain halus. **Jangan** pakai
+  teal-orange berat atau vignette kuat, karena wajah tenggelam di layar HP dan terlihat ketinggalan zaman.
+  Timeline di-set 24 fps sesuai sumber supaya tidak judder.
+- **Momen** (`"moments": [[start, end, "BARIS 1", "baris 2 miring"]]` dalam detik sumber): letterbox hitam,
+  judul serif Georgia (baris 2 miring emas), push-in pelan +0.10, caption Hormozi disembunyikan, dan riser
+  menuju impact. Gunakan **1–2 per klip**, di definisi ulang atau punchline. Tanpa `moments`, builder
+  otomatis memakai punchline (accent) terakhir.
+- **Ending**: reverb tail pada kata terakhir + fade to black 0,8 dtk (fade opacity tidak terlihat di
+  preview, tapi ada di CapCut).
+- Jaga ritme: aturan jeda visual ≤5 dtk tetap berlaku. Sinematik bukan berarti lambat.
+
 ## 7. Animasi, transisi, dan efek CapCut
 Semuanya hanya bisa **dipakai ulang** dari katalog lokal, yaitu yang pernah diterapkan manual di CapCut.
 Kalau `doctor` melaporkan katalog kosong, minta user: buka proyek uji → pasang 1 animasi teks (In) +

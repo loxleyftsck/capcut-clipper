@@ -19,7 +19,8 @@ DEFAULTS = {
     "whisper_model": "base",
     "language": "id",
     "sfx_dir": str(REPO / "assets" / "sfx"),
-    "sfx_volume": {"whoosh_soft": 0.12, "whoosh_fast": 0.12, "pop": 0.10, "boom": 0.18},
+    "style": "hormozi",                         # or "cinematic"; a clip can override with "style"
+    "sfx_volume": {"whoosh_soft": 0.12, "whoosh_fast": 0.12, "pop": 0.10, "boom": 0.18, "riser": 0.12},
     "clips": [],
 }
 

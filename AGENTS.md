@@ -33,6 +33,11 @@ Always run Python through `.venv\Scripts\python.exe`.
 .venv\Scripts\python.exe -m clipper install    projects\<slug>\clips.json [1 2 ...]
 ```
 
+## Styles
+- `hormozi` (default): bold word-by-word captions, punch-ins, fast SFX.
+- `cinematic` (spec or per clip): graded footage baked with ffmpeg at 24 fps, letterbox "moments" with serif
+  titles, riser → impact, reverb tail + fade out. See SKILL.md §6b. Keep grades subtle.
+
 ## Hard rules
 - **Never write to a CapCut project while CapCut has it open.** CapCut flushes its in-memory copy on close
   and silently overwrites your edits. `install` skips `.locked` folders, and the MCP `capcut_save` refuses

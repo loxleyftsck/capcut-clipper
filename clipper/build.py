@@ -17,6 +17,11 @@ from capcut_mcp import edits, ir, paths, preview
 from . import media
 from .config import WHITE, YELLOW, Spec
 
+SERIF_BOLD = r"C:\Windows\Fonts\georgiab.ttf"
+SERIF_ITALIC = r"C:\Windows\Fonts\georgiai.ttf"
+# Track layout shared by both styles.
+T = {"speaker": 0, "broll": 1, "matte": 2, "title": 3, "caption": 4, "credit": 5, "moment": 6, "voice": 7, "sfx": 8}
+
 
 # ------------------------------------------------------------------ project
 
@@ -121,11 +126,26 @@ def style_runs(material: dict, colors: list[tuple[int, int, tuple]]) -> None:
 
 # ------------------------------------------------------------------ build
 
+def letterbox_matte(path: Path, size: tuple[int, int], bar: int) -> Path:
+    """Transparent full-frame PNG with black bars top and bottom (a 'movie' moment)."""
+    if not path.exists():
+        from PIL import Image, ImageDraw
+        im = Image.new("RGBA", size, (0, 0, 0, 0))
+        d = ImageDraw.Draw(im)
+        d.rectangle([0, 0, size[0], bar], fill=(0, 0, 0, 255))
+        d.rectangle([0, size[1] - bar, size[0], size[1]], fill=(0, 0, 0, 255))
+        im.save(path)
+    return path
+
+
 def build_clip(spec: Spec, clip: dict, spoken: list[dict]) -> dict:
     stage = spec.p("out_dir")
     stage.mkdir(parents=True, exist_ok=True)
     source = spec.p("source")
     font = spec["font"]
+    style = clip.get("style", spec.get("style", "hormozi"))
+    cine = style == "cinematic"
+    tail = 0.8 if cine else 0.0          # cinematic ending: reverb tail + fade to black
     project = clone_template(spec, clip["name"], stage)
     data = json.loads((project / "draft_content.json").read_text(encoding="utf-8"))
     for track in data["tracks"]:
@@ -133,8 +153,7 @@ def build_clip(spec: Spec, clip: dict, spoken: list[dict]) -> dict:
     data["tracks"] = [t for t in data["tracks"] if t.get("type") == "video"][:1]
     cw, ch = spec["canvas"]
     data["canvas_config"].update({"width": cw, "height": ch, "ratio": "9:16" if cw * 16 == ch * 9 else "original"})
-    # 0 speaker (muted), 1 B-roll, 2 hook title, 3 captions, 4 credit, 5 voice, 6/7 SFX (alternating).
-    for kind in ("video", "text", "text", "text", "audio", "audio", "audio"):
+    for kind in ("video", "video", "text", "text", "text", "text", "audio", "audio", "audio"):
         data["tracks"].append({"attribute": 0, "flag": 0, "id": edits.guid(), "is_default_name": True,
                                "name": "", "segments": [], "type": kind})
 
@@ -159,6 +178,13 @@ def build_clip(spec: Spec, clip: dict, spoken: list[dict]) -> dict:
     # ---- voice: the speaker ranges rendered as one loudness-normalised, peak-limited track
     voice = stage / f"{clip['name']}.voice.wav"
     loud = media.render_voice(source, ranges, voice, lufs=spec["target_lufs"])
+    video_src = source
+    if cine:
+        media.add_reverb_tail(voice, tail)
+        # Bake the grade into one back-to-back cut of the ranges (the last one runs `tail` s longer).
+        extended = ranges[:-1] + [(ranges[-1][0], ranges[-1][1] + tail)]
+        video_src = media.render_graded(source, extended, stage / f"{clip['name']}.graded.mp4")
+        data["fps"] = 24.0                # source is 24 fps; a 30 fps timeline judders
 
     # ---- visual events: cuts + B-roll in/out; punch-ins are added until no gap > max_visual_gap
     broll = [(stem, to_tl(s), to_tl(e)) for stem, s, e in clip.get("broll", [])]
@@ -167,9 +193,26 @@ def build_clip(spec: Spec, clip: dict, spoken: list[dict]) -> dict:
         return any(a - 0.3 <= x <= b + 0.3 for _, a, b in broll)
 
     captions = clip["captions"]
+
+    # ---- cinematic moments: letterbox + serif line + slow push-in, captions hidden (default: last punchline)
+    moments = []
+    if cine:
+        for m in clip.get("moments") or []:
+            moments.append((to_tl(m[0]), to_tl(m[1]), m[2], m[3] if len(m) > 3 else ""))
+        accents = [c for c in captions if len(c) > 3 and c[3]]
+        if not moments and accents:
+            c = accents[-1]
+            ms = to_tl(c[1])
+            moments.append((ms, min(max(to_tl(c[2]), ms + 2.4), total + tail), c[0], ""))
+
+    def in_moment(x: float) -> bool:
+        return any(a - 0.2 <= x < b for a, b, _, _ in moments)
+
     events = {0.0, total} | {off for _, _, off in offsets[1:]} | {x for _, a, b in broll for x in (a, b)}
     punches = [(to_tl(c[1]), min(to_tl(c[2]), to_tl(c[1]) + 1.8), 0.12)
                for c in captions if len(c) > 3 and c[3] and not in_broll(to_tl(c[1]))]
+    punches = [p for p in punches if not in_moment(p[0]) and not any(p[0] < a < p[1] for a, _, _, _ in moments)]
+    punches += [(a, b, 0.10) for a, b, _, _ in moments]
     events |= {p[0] for p in punches}
     starts = sorted(to_tl(c[1]) for c in captions)
     while True:
@@ -187,10 +230,12 @@ def build_clip(spec: Spec, clip: dict, spoken: list[dict]) -> dict:
     max_gap = max(y - x for x, y in zip(ev, ev[1:]))
 
     # ---- speaker ranges
+    speaker_ids = []
     for i, (a, b) in enumerate(ranges):
-        dur, off = b - a, to_tl(a)
-        seg = edits.add_clip(data, str(source), start=off, duration=dur, source_start=a, track_index=0,
-                             volume=0.0)
+        dur, off = b - a + (tail if i == len(ranges) - 1 else 0.0), to_tl(a)
+        seg = edits.add_clip(data, str(video_src), start=off, duration=dur,
+                             source_start=off if cine else a, track_index=T["speaker"], volume=0.0)
+        speaker_ids.append(seg["clip_id"])
         edits.set_crop(data, seg["clip_id"], crop_x, 0.0, crop_w, 1.0)
         base0 = 1.0 if i % 2 == 0 else 1.12          # alternate framing so each jump cut reads as intended
 
@@ -200,18 +245,21 @@ def build_clip(spec: Spec, clip: dict, spoken: list[dict]) -> dict:
         pts = [(0.0, base(0.0))]
         for ps, pe, amp in punches:
             ps, pe = ps - off, pe - off
-            if ps < 0.15 or pe > dur - 0.15 or ps <= pts[-1][0] + 0.15:
+            pe = min(pe, dur - 0.2)
+            if ps < 0.15 or pe - ps < 0.4 or ps <= pts[-1][0] + 0.15:
                 continue
             pts += [(ps, base(ps)), (ps + 0.08, base(ps) + amp), (pe - 0.08, base(pe) + amp), (pe, base(pe))]
         pts.append((dur, base(dur)))
         kf = [{"time": round(x, 3), "value": round(v, 4)} for x, v in pts]
         for prop in ("KFTypeScaleX", "KFTypeScaleY"):
             edits.set_keyframes(data, seg["clip_id"], prop, kf)
+    if cine:
+        edits.add_fade(data, speaker_ids[-1], fade_out=tail)
 
     # ---- hook title: big, top third, first ~3.6 s
     edits.add_text(data, clip["title"], start=0.0, duration=min(3.6, total), font_size=18.0,
                    color=YELLOW, position=(0.0, 0.66), stroke=(0.0, 0.0, 0.0), stroke_width=0.09,
-                   font_path=font, track_index=2)
+                   font_path=font, track_index=T["title"])
 
     # ---- captions: 1-3 word lines; the spoken word lights up (accent lines stay fully yellow)
     n_lines = 0
@@ -222,11 +270,14 @@ def build_clip(spec: Spec, clip: dict, spoken: list[dict]) -> dict:
             n_lines += 1
             for k, (_, ws, _) in enumerate(line):
                 seg_end = line[k + 1][1] if k + 1 < len(line) else line[-1][2]
-                start = to_tl(ws)
-                edits.add_text(data, text, start=start, duration=max(to_tl(seg_end) - start, 0.05),
+                start, end = to_tl(ws), to_tl(seg_end)
+                if in_moment(start):
+                    continue
+                end = min([end] + [a for a, _, _, _ in moments if start < a])
+                edits.add_text(data, text, start=start, duration=max(end - start, 0.05),
                                font_size=17.5 if accent else 16.0, color=YELLOW if accent else WHITE,
                                position=(0.0, -0.30), stroke=(0.0, 0.0, 0.0), stroke_width=0.08,
-                               font_path=font, track_index=3)
+                               font_path=font, track_index=T["caption"])
                 if accent:
                     continue
                 pos, colors = 0, []
@@ -239,34 +290,48 @@ def build_clip(spec: Spec, clip: dict, spoken: list[dict]) -> dict:
 
     # ---- source credit
     if spec.get("credit"):
-        edits.add_text(data, spec["credit"], start=0.0, duration=total, font_size=6.5, color=WHITE,
+        edits.add_text(data, spec["credit"], start=0.0, duration=total + tail, font_size=6.5, color=WHITE,
                        position=(0.0, 0.88), stroke=(0.0, 0.0, 0.0), stroke_width=0.05,
-                       font_path=font, track_index=4)
+                       font_path=font, track_index=T["credit"])
 
-    seg = edits.add_clip(data, str(voice), start=0.0, duration=total, track_index=5, volume=1.0)
+    # ---- moments: matte + serif line (the optional second line rides the idle caption track)
+    matte = letterbox_matte(stage / "_letterbox.png", (cw, ch), round(ch * 0.172))
+    for a, b, line1, line2 in moments:
+        edits.add_clip(data, str(matte), start=a, duration=b - a, track_index=T["matte"], volume=0.0)
+        edits.add_text(data, line1, start=a + 0.15, duration=b - a - 0.15, font_size=15.5, color=WHITE,
+                       position=(0.0, -0.76), stroke=None, font_path=SERIF_BOLD, track_index=T["moment"])
+        if line2:
+            edits.add_text(data, line2, start=a + 0.5, duration=b - a - 0.5, font_size=13.0, color=YELLOW,
+                           position=(0.0, -0.86), stroke=None, font_path=SERIF_ITALIC, track_index=T["caption"])
+
+    seg = edits.add_clip(data, str(voice), start=0.0, duration=total + tail, track_index=T["voice"], volume=1.0)
     edits.set_denoise(data, seg["clip_id"], True)
 
     # ---- B-roll + SFX
     sfx_dir = Path(spec["sfx_dir"])
-    hits = [(0.0, "pop")] + [(off - 0.15, "whoosh_soft") for _, _, off in offsets[1:]]
+    hits = [(0.0, "pop", 1.0)] + [(off - 0.15, "whoosh_soft", 1.0) for _, _, off in offsets[1:]]
     for stem, a, b in broll:
         img = spec.p("broll_dir") / f"{stem}.jpg"
-        seg = edits.add_clip(data, str(img), start=a, duration=b - a, track_index=1, volume=0.0)
+        seg = edits.add_clip(data, str(img), start=a, duration=b - a, track_index=T["broll"], volume=0.0)
         kf = [{"time": 0.0, "value": 1.0}, {"time": b - a, "value": 1.08}]
         for prop in ("KFTypeScaleX", "KFTypeScaleY"):
             edits.set_keyframes(data, seg["clip_id"], prop, kf)
-        hits.append((a - 0.12, "whoosh_fast"))
-    hits.append((to_tl(captions[-1][1]), "boom"))
-    for i, (at, name) in enumerate(sorted(hits)):
-        edits.add_clip(data, str(sfx_dir / f"{name}.wav"), start=max(0.0, at), track_index=6 + i % 2,
-                       volume=spec["sfx_volume"][name])
+        hits.append((a - 0.12, "whoosh_fast", 1.0))
+    if moments:   # a riser builds into each moment and the impact lands on it
+        for a, _, _, _ in moments:
+            hits += [(a - 1.6, "riser", 1.0), (a, "boom", 0.6)]   # quieter impact under the voice
+    else:
+        hits.append((to_tl(captions[-1][1]), "boom", 1.0))
+    for i, (at, name, gain) in enumerate(sorted(hits)):
+        edits.add_clip(data, str(sfx_dir / f"{name}.wav"), start=max(0.0, at), track_index=T["sfx"] + i % 2,
+                       volume=spec["sfx_volume"][name] * gain)
 
     ir.recompute_duration(data)
     write_content(project, data)
 
     out = stage / f"{clip['name']}.mp4"
     preview.render(ir.build(data, clip["name"]), out, height=ch, with_audio=True, font=font)
-    report = {"clip": clip["name"], "duration": round(total, 2), "source_lufs": loud["source_lufs"],
+    report = {"clip": clip["name"], "style": style, "moments": len(moments), "duration": round(total + tail, 2), "source_lufs": loud["source_lufs"],
               "voice_lufs": loud["lufs"], "voice_true_peak": loud["true_peak"], "caption_lines": n_lines, "punch_ins": len(punches),
               "max_visual_gap": round(max_gap, 2), "broll": len(broll),
               "freezes": media.freezes(out), "project": str(project), "preview": str(out)}

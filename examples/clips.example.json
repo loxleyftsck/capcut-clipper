@@ -15,6 +15,8 @@
   "clips": [
     {
       "name": "Clip 01 - Ember vs Pipa",
+      "style": "cinematic",
+      "moments": [[886.4, 888.2, "GUE BANGUN PIPANYA.", "bukan uang dari langit."]],
       "title": "KERJA PAKAI EMBER\nATAU BANGUN PIPA?",
       "ranges": [[853.0, 878.5], [878.9, 888.2]],
       "captions": [

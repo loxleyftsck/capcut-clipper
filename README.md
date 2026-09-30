@@ -17,6 +17,8 @@ Satu paket berisi:
 - Judul hook besar di 3,6 dtk pertama, dan kredit sumber
 - B-roll foto dengan zoom pelan dan whoosh
 - Suara dirender ulang ke **-14 LUFS** dengan batas puncak -1,5 dBTP (tanpa clipping), denoise CapCut aktif, SFX (pop/whoosh/boom)
+- **Gaya sinematik** opsional (`"style": "cinematic"`): grade film halus dirender ke footage (24 fps, vignette, grain),
+  momen letterbox dengan judul serif, riser → impact, dan ending dengan reverb tail + fade to black
 - Preview mp4 dan `report.json`. `audit` memeriksa freeze, loudness, jeda visual, dan durasi.
 
 ## Syarat

@@ -10,4 +10,5 @@ Vendored from https://github.com/LHenri88/capcut-mcp (MIT, see LICENSE) at commi
 | `preview.py` | rich-text runs drawn separately | word-by-word caption highlight preview |
 | `preview.py` | filter graph passed via `-filter_complex_script` | caption-heavy timelines exceed Windows' 32k command-line limit |
 | `ir.py` | expose `runs` for multi-style text | feeds the rich-text preview |
+| `ir.py` / `preview.py` | expose and honour each text's own `font_path` | serif "moment" titles preview in their real font |
 | `edits.py` / `server.py` | `font_path` on add_text, `capcut_set_canvas`, `capcut_add_video_track` | 9:16 builds, B-roll tracks, custom fonts |

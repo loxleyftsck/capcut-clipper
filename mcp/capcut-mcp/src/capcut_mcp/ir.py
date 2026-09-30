@@ -138,6 +138,7 @@ def describe_clip(segment: dict, index: dict[str, tuple[str, dict]], at: float |
     if category == "texts":
         out["text"] = _text_content(material)
         out["font_size"] = material.get("font_size")
+        out["font_path"] = material.get("font_path") or ""
         try:
             import json
             payload = json.loads(material.get("content") or "{}")

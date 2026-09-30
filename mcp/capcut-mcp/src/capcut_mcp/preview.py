@@ -167,12 +167,14 @@ def build_command(
             )
             x = int(round(width / 2 + clip.get("position", {}).get("x", 0.0) * width / 2))
             y = int(round(height / 2 - clip.get("position", {}).get("y", 0.0) * height / 2))
-            fontfile = font.replace(chr(92), '/').replace(':', chr(92) + ':')
+            own = clip.get("font_path") or ""
+            clip_font = own if own and Path(own).is_file() else font   # per-text font (e.g. serif moments)
+            fontfile = clip_font.replace(chr(92), '/').replace(':', chr(92) + ':')
             if clip.get("runs"):
                 # Rich text: draw each coloured run separately, laid out from its
                 # real advance width so the line stays centred as one string.
                 from PIL import ImageFont
-                pil_font = ImageFont.truetype(font, size)
+                pil_font = ImageFont.truetype(clip_font, size)
                 widths = [pil_font.getlength(run["text"]) for run in clip["runs"]]
                 cursor = x - sum(widths) / 2
                 steps = []
@@ -194,7 +196,7 @@ def build_command(
                 f":fontsize={size}:fontcolor={color_hex}:borderw={max(1, size // 18)}"
                 f":bordercolor=black:x={x}-text_w/2:y={y}-text_h/2"
                 f":enable='between(t,{visible_from:.3f},{visible_to:.3f})'"
-                f":fontfile='{font.replace(chr(92), '/').replace(':', chr(92) + ':')}'"
+                f":fontfile='{fontfile}'"
             )
             filters.append(f"{base}{draw}{label}")
             base = label
