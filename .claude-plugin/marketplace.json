@@ -1,0 +1,14 @@
+{
+  "name": "capcut-clipper",
+  "description": "CapCut short-form clipper: skill, subagent and CapCut MCP server.",
+  "owner": {
+    "name": "capcut-clipper"
+  },
+  "plugins": [
+    {
+      "name": "capcut-clipper",
+      "source": "./",
+      "description": "CapCut clipper: skill + subagent + CapCut MCP server for building short-form clips."
+    }
+  ]
+}

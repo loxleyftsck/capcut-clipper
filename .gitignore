@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+
+# Machine-local binaries and model caches
+bin/*.exe
+models/
+
+# Working projects: source-derived transcripts, downloaded photos, built drafts and previews
+projects/*
+!projects/.gitkeep
+setup.log
